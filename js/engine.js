@@ -3,11 +3,13 @@
  * Handles all interaction with the Stockfish chess engine
  */
 
-const Engine = (function() {
+const Engine = (function () {
     // Private variables
     let worker = null;
     let isReady = false;
     let isAnalyzing = false;
+    let isStopping = false;
+    let pendingAnalysisFen = null;
     let currentCallback = null;
     let analysisLines = {};
     let onReadyCallback = null;
@@ -22,9 +24,9 @@ const Engine = (function() {
      * @param {Object} callbacks - { onReady, onAnalysis, onError }
      */
     function init(callbacks = {}) {
-        onReadyCallback = callbacks.onReady || function() {};
-        onAnalysisCallback = callbacks.onAnalysis || function() {};
-        onErrorCallback = callbacks.onError || function() {};
+        onReadyCallback = callbacks.onReady || function () { };
+        onAnalysisCallback = callbacks.onAnalysis || function () { };
+        onErrorCallback = callbacks.onError || function () { };
 
         try {
             worker = new Worker(STOCKFISH_PATH);
@@ -44,7 +46,7 @@ const Engine = (function() {
      */
     function handleMessage(event) {
         const line = event.data;
-        
+
         // Debug logging (comment out in production)
         // console.log('Stockfish:', line);
 
@@ -67,9 +69,19 @@ const Engine = (function() {
             parseAnalysisInfo(line);
         }
 
-        // Best move found (analysis complete for this depth)
+        // Best move found (analysis complete for this depth or engine stopped)
         if (line.startsWith('bestmove')) {
-            // Analysis continues until stopped, bestmove is sent when stopped
+            isAnalyzing = false;
+
+            if (isStopping) {
+                isStopping = false;
+                const nextFen = pendingAnalysisFen;
+                pendingAnalysisFen = null;
+
+                if (nextFen) {
+                    analyze(nextFen);
+                }
+            }
         }
     }
 
@@ -140,7 +152,7 @@ const Engine = (function() {
         // Store by multipv line number
         if (info.multipv && info.pv && info.pv.length > 0) {
             analysisLines[info.multipv] = info;
-            
+
             // Send update callback with all current lines
             if (onAnalysisCallback) {
                 onAnalysisCallback({
@@ -163,14 +175,25 @@ const Engine = (function() {
             return;
         }
 
+        // If currently stopping, queue this analysis
+        if (isStopping) {
+            pendingAnalysisFen = fen;
+            return;
+        }
+
         // Stop any current analysis
         if (isAnalyzing) {
-            stop();
+            isStopping = true;
+            pendingAnalysisFen = fen;
+            send('stop');
+            return;
         }
 
         // Clear previous analysis
         analysisLines = {};
         isAnalyzing = true;
+        isStopping = false;
+        pendingAnalysisFen = null;
 
         // Set position and start infinite analysis
         send('position fen ' + fen);
@@ -181,10 +204,12 @@ const Engine = (function() {
      * Stop current analysis
      */
     function stop() {
-        if (isAnalyzing) {
+        if (isAnalyzing && !isStopping) {
+            isStopping = true;
             send('stop');
-            isAnalyzing = false;
         }
+        // Explicitly stopping cancels any pending analysis
+        pendingAnalysisFen = null;
     }
 
     /**
@@ -250,7 +275,7 @@ const Engine = (function() {
      */
     function formatScore(score, scoreType, turn) {
         let displayScore = score;
-        
+
         // Negate score if it's black's turn (Stockfish always reports from engine's perspective)
         if (turn === 'b') {
             displayScore = -score;
