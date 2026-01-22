@@ -264,6 +264,11 @@ h3 {
     box-shadow: inset 0 0 0 3px var(--color-highlight);
 }
 
+/* Selected square highlight - GOLD */
+#board .highlight-selected {
+    box-shadow: inset 0 0 0 4px var(--color-gold) !important;
+}
+
 /* Piece styling */
 #board .piece-417db {
     filter: drop-shadow(1px 2px 2px rgba(0, 0, 0, 0.3));

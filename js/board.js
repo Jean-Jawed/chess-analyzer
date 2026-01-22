@@ -10,6 +10,7 @@ const Board = (function () {
     let isEditMode = false;
     let onPositionChangeCallback = null;
     let selectedPiece = null;
+    let selectedSquare = null;
 
     // Board configuration
     const config = {
@@ -44,6 +45,12 @@ const Board = (function () {
 
         // Setup spare pieces drag and drop
         setupSparePieces();
+
+        // Bind clicks for Tap-to-Move
+        $('#board').on('click', '.square-55d63', function () {
+            const square = $(this).data('square');
+            onSquareClick(square);
+        });
 
         return board;
     }
@@ -142,7 +149,79 @@ const Board = (function () {
      * Handle mouse out square
      */
     function onMouseoutSquare(square, piece) {
-        removeHighlights();
+        // Only remove highlights if no square is currently selected for Tap-to-Move
+        if (!selectedSquare) {
+            removeHighlights();
+        }
+    }
+
+    /**
+     * Handle click on square (Tap-to-Move)
+     */
+    function onSquareClick(square) {
+        if (isEditMode) return;
+
+        // If a piece is already selected, try to move there
+        if (selectedSquare) {
+            // Attempt to make move
+            const move = game.move({
+                from: selectedSquare,
+                to: square,
+                promotion: 'q'
+            });
+
+            if (move) {
+                // Move was legal
+                board.position(game.fen());
+                selectedSquare = null;
+                removeHighlights();
+                notifyPositionChange();
+                return;
+            }
+
+            // If move was illegal, check if they clicked another of their own pieces
+            const piece = game.get(square);
+            if (piece && piece.color === game.turn()) {
+                // Switch selection to new piece
+                selectedSquare = square;
+                removeHighlights();
+                highlightSelected(square);
+                showLegalMoves(square);
+            } else {
+                // Cancel selection
+                selectedSquare = null;
+                removeHighlights();
+            }
+        } else {
+            // No piece selected, try to select one
+            const piece = game.get(square);
+            if (piece && piece.color === game.turn()) {
+                selectedSquare = square;
+                highlightSelected(square);
+                showLegalMoves(square);
+            }
+        }
+    }
+
+    /**
+     * Highlight selected square
+     */
+    function highlightSelected(square) {
+        $('#board .square-' + square).addClass('highlight-selected');
+    }
+
+    /**
+     * Show legal moves for a square
+     */
+    function showLegalMoves(square) {
+        const moves = game.moves({
+            square: square,
+            verbose: true
+        });
+
+        moves.forEach(move => {
+            highlightSquare(move.to);
+        });
     }
 
     /**
@@ -157,7 +236,7 @@ const Board = (function () {
      * Remove all highlights
      */
     function removeHighlights() {
-        $('#board .square-55d63').removeClass('highlight-white highlight-black');
+        $('#board .square-55d63').removeClass('highlight-white highlight-black highlight-selected');
     }
 
     /**
@@ -347,6 +426,8 @@ const Board = (function () {
     function reset() {
         game.reset();
         board.position('start');
+        selectedSquare = null;
+        removeHighlights();
         notifyPositionChange();
     }
 
@@ -356,6 +437,8 @@ const Board = (function () {
     function clear() {
         game.clear();
         board.clear();
+        selectedSquare = null;
+        removeHighlights();
         notifyPositionChange();
     }
 
