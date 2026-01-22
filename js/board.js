@@ -1,0 +1,465 @@
+/**
+ * Board.js - Chessboard Management Module
+ * Wraps Chessboard.js and Chess.js for board display and game logic
+ */
+
+const Board = (function () {
+    // Private variables
+    let board = null;
+    let game = null;
+    let isEditMode = false;
+    let onPositionChangeCallback = null;
+    let selectedPiece = null;
+
+    // Board configuration
+    const config = {
+        draggable: true,
+        position: 'start',
+        pieceTheme: 'assets/pieces/{piece}.svg',
+        onDragStart: onDragStart,
+        onDrop: onDrop,
+        onSnapEnd: onSnapEnd,
+        onMouseoutSquare: onMouseoutSquare,
+        onMouseoverSquare: onMouseoverSquare
+    };
+
+    /**
+     * Initialize the board
+     * @param {string} elementId - DOM element ID for the board
+     * @param {Function} onPositionChange - Callback when position changes
+     */
+    function init(elementId, onPositionChange) {
+        onPositionChangeCallback = onPositionChange || function () { };
+
+        // Initialize Chess.js
+        game = new Chess();
+
+        // Initialize Chessboard.js
+        board = Chessboard(elementId, config);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            board.resize();
+        });
+
+        // Setup spare pieces drag and drop
+        setupSparePieces();
+
+        return board;
+    }
+
+    /**
+     * Handle drag start
+     */
+    function onDragStart(source, piece, position, orientation) {
+        // In edit mode, allow any piece to be moved
+        if (isEditMode) {
+            return true;
+        }
+
+        // In play mode, only allow moves for the side to move
+        // Using old Chess.js API: game_over() instead of isGameOver()
+        if (game.game_over()) return false;
+
+        // Only allow dragging pieces of the current turn
+        if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+            (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Handle piece drop
+     */
+    function onDrop(source, target, piece, newPos, oldPos, orientation) {
+        // In edit mode, allow any move
+        if (isEditMode) {
+            // If dropped off board, remove the piece
+            if (target === 'offboard') {
+                return 'trash';
+            }
+
+            // Update internal position after snapback animation
+            setTimeout(() => {
+                syncGameFromBoard();
+                notifyPositionChange();
+            }, 0);
+
+            return;
+        }
+
+        // In play mode, validate moves with Chess.js
+        const move = game.move({
+            from: source,
+            to: target,
+            promotion: 'q' // Always promote to queen for simplicity
+        });
+
+        // Illegal move
+        if (move === null) {
+            return 'snapback';
+        }
+
+        notifyPositionChange();
+    }
+
+    /**
+     * Handle snap end (piece finished moving)
+     */
+    function onSnapEnd() {
+        // Update board position to match game state
+        if (!isEditMode) {
+            board.position(game.fen());
+        }
+    }
+
+    /**
+     * Handle mouse over square (for highlighting)
+     */
+    function onMouseoverSquare(square, piece) {
+        if (isEditMode) return;
+
+        // Get legal moves for this square
+        const moves = game.moves({
+            square: square,
+            verbose: true
+        });
+
+        if (moves.length === 0) return;
+
+        // Highlight the square
+        highlightSquare(square);
+
+        // Highlight possible moves
+        moves.forEach(move => {
+            highlightSquare(move.to);
+        });
+    }
+
+    /**
+     * Handle mouse out square
+     */
+    function onMouseoutSquare(square, piece) {
+        removeHighlights();
+    }
+
+    /**
+     * Highlight a square
+     */
+    function highlightSquare(square) {
+        const $square = $('#board .square-' + square);
+        $square.addClass('highlight-' + ($square.hasClass('black-3c85d') ? 'black' : 'white'));
+    }
+
+    /**
+     * Remove all highlights
+     */
+    function removeHighlights() {
+        $('#board .square-55d63').removeClass('highlight-white highlight-black');
+    }
+
+    /**
+     * Setup spare pieces for edit mode
+     */
+    function setupSparePieces() {
+        const sparePieces = document.querySelectorAll('.spare-piece');
+
+        sparePieces.forEach(piece => {
+            piece.draggable = true;
+
+            piece.addEventListener('dragstart', (e) => {
+                if (!isEditMode) {
+                    e.preventDefault();
+                    return;
+                }
+                selectedPiece = e.target.dataset.piece;
+                e.dataTransfer.setData('text/plain', selectedPiece);
+                e.dataTransfer.effectAllowed = 'copy';
+            });
+        });
+
+        // Setup drop zones on board squares
+        const boardEl = document.getElementById('board');
+
+        boardEl.addEventListener('dragover', (e) => {
+            if (isEditMode && selectedPiece) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+            }
+        });
+
+        boardEl.addEventListener('drop', (e) => {
+            if (!isEditMode || !selectedPiece) return;
+
+            e.preventDefault();
+
+            // Get the square from the drop position
+            const square = getSquareFromEvent(e);
+            if (square) {
+                // Get current position and add the piece
+                const position = board.position();
+                position[square] = selectedPiece;
+                board.position(position);
+
+                syncGameFromBoard();
+                notifyPositionChange();
+            }
+
+            selectedPiece = null;
+        });
+    }
+
+    /**
+     * Get square from mouse event
+     */
+    function getSquareFromEvent(e) {
+        const boardEl = document.getElementById('board');
+        const rect = boardEl.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const squareSize = rect.width / 8;
+
+        const file = Math.floor(x / squareSize);
+        const rank = 7 - Math.floor(y / squareSize);
+
+        if (file >= 0 && file <= 7 && rank >= 0 && rank <= 7) {
+            const files = 'abcdefgh';
+            const orientation = board.orientation();
+
+            if (orientation === 'white') {
+                return files[file] + (rank + 1);
+            } else {
+                return files[7 - file] + (8 - rank);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sync Chess.js game state from board position
+     */
+    function syncGameFromBoard() {
+        const position = board.position();
+        const turn = document.getElementById('selectTurn')?.value || 'w';
+        const fen = positionToFen(position, turn);
+
+        // Try to load the FEN, may fail if position is invalid
+        const valid = game.load(fen);
+
+        return valid;
+    }
+
+    /**
+     * Convert board position object to FEN string
+     */
+    function positionToFen(position, turn = 'w') {
+        let fen = '';
+
+        for (let rank = 8; rank >= 1; rank--) {
+            let empty = 0;
+
+            for (let fileIdx = 0; fileIdx < 8; fileIdx++) {
+                const file = 'abcdefgh'[fileIdx];
+                const square = file + rank;
+                const piece = position[square];
+
+                if (piece) {
+                    if (empty > 0) {
+                        fen += empty;
+                        empty = 0;
+                    }
+                    // Convert piece format: wK -> K, bK -> k
+                    const pieceChar = piece[1];
+                    fen += piece[0] === 'w' ? pieceChar.toUpperCase() : pieceChar.toLowerCase();
+                } else {
+                    empty++;
+                }
+            }
+
+            if (empty > 0) {
+                fen += empty;
+            }
+
+            if (rank > 1) {
+                fen += '/';
+            }
+        }
+
+        // Add turn and default castling/en passant/move counters
+        fen += ' ' + turn + ' KQkq - 0 1';
+
+        return fen;
+    }
+
+    /**
+     * Notify position change
+     */
+    function notifyPositionChange() {
+        if (onPositionChangeCallback) {
+            // Using old Chess.js API
+            onPositionChangeCallback({
+                fen: game.fen(),
+                turn: game.turn(),
+                isCheck: game.in_check(),
+                isCheckmate: game.in_checkmate(),
+                isStalemate: game.in_stalemate(),
+                isDraw: game.in_draw(),
+                isGameOver: game.game_over()
+            });
+        }
+    }
+
+    /**
+     * Set edit mode
+     */
+    function setEditMode(enabled) {
+        isEditMode = enabled;
+
+        if (enabled) {
+            // In edit mode, update game from board on turn change
+            document.getElementById('selectTurn')?.addEventListener('change', () => {
+                syncGameFromBoard();
+                notifyPositionChange();
+            });
+        }
+    }
+
+    /**
+     * Get edit mode status
+     */
+    function getEditMode() {
+        return isEditMode;
+    }
+
+    /**
+     * Flip the board
+     */
+    function flip() {
+        board.flip();
+    }
+
+    /**
+     * Reset to starting position
+     */
+    function reset() {
+        game.reset();
+        board.position('start');
+        notifyPositionChange();
+    }
+
+    /**
+     * Clear the board
+     */
+    function clear() {
+        game.clear();
+        board.clear();
+        notifyPositionChange();
+    }
+
+    /**
+     * Load a FEN position
+     * @param {string} fen - Position in FEN notation
+     * @returns {boolean} Whether the FEN was valid
+     */
+    function loadFen(fen) {
+        const valid = game.load(fen);
+
+        if (valid) {
+            board.position(game.fen());
+            notifyPositionChange();
+        }
+
+        return valid;
+    }
+
+    /**
+     * Get current FEN
+     */
+    function getFen() {
+        return game.fen();
+    }
+
+    /**
+     * Get current turn
+     */
+    function getTurn() {
+        return game.turn();
+    }
+
+    /**
+     * Get Chess.js instance (for move conversion etc.)
+     */
+    function getGame() {
+        return game;
+    }
+
+    /**
+     * Validate current position
+     * @returns {Object} { valid, errors }
+     */
+    function validatePosition() {
+        const errors = [];
+        const position = board.position();
+
+        // Count pieces
+        let whiteKings = 0;
+        let blackKings = 0;
+        let whitePawnsOnEdge = 0;
+        let blackPawnsOnEdge = 0;
+
+        for (const square in position) {
+            const piece = position[square];
+            const rank = square[1];
+
+            if (piece === 'wK') whiteKings++;
+            if (piece === 'bK') blackKings++;
+
+            if (piece === 'wP' && (rank === '1' || rank === '8')) whitePawnsOnEdge++;
+            if (piece === 'bP' && (rank === '1' || rank === '8')) blackPawnsOnEdge++;
+        }
+
+        if (whiteKings !== 1) {
+            errors.push('Les Blancs doivent avoir exactement un Roi');
+        }
+        if (blackKings !== 1) {
+            errors.push('Les Noirs doivent avoir exactement un Roi');
+        }
+        if (whitePawnsOnEdge > 0 || blackPawnsOnEdge > 0) {
+            errors.push('Les pions ne peuvent pas être sur la 1ère ou 8ème rangée');
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors: errors
+        };
+    }
+
+    /**
+     * Highlight best move on board
+     */
+    function highlightMove(from, to) {
+        removeHighlights();
+        highlightSquare(from);
+        highlightSquare(to);
+    }
+
+    // Public API
+    return {
+        init,
+        setEditMode,
+        getEditMode,
+        flip,
+        reset,
+        clear,
+        loadFen,
+        getFen,
+        getTurn,
+        getGame,
+        validatePosition,
+        highlightMove,
+        removeHighlights
+    };
+})();

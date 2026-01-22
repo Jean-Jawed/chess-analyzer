@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Analyzer — Café d'Échecs</title>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+3:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="logo">♔ Café d'Échecs</h1>
+            <p class="tagline">Analyseur de positions</p>
+        </header>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <!-- Eval bar -->
+            <aside class="eval-panel">
+                <div class="eval-bar-container">
+                    <div class="eval-bar">
+                        <div class="eval-bar-white" id="evalBarWhite"></div>
+                        <div class="eval-bar-black" id="evalBarBlack"></div>
+                    </div>
+                    <div class="eval-score" id="evalScore">0.0</div>
+                </div>
+                <div class="eval-label">
+                    <span class="label-white">Blancs</span>
+                    <span class="label-black">Noirs</span>
+                </div>
+            </aside>
+
+            <!-- Board -->
+            <section class="board-section">
+                <div id="board" class="chess-board"></div>
+
+                <!-- Controls -->
+                <div class="controls">
+                    <button id="btnFlip" class="btn btn-secondary" title="Retourner l'échiquier">
+                        ⇅ Retourner
+                    </button>
+                    <button id="btnEdit" class="btn btn-secondary" title="Mode édition">
+                        ✎ Éditer
+                    </button>
+                    <button id="btnReset" class="btn btn-secondary" title="Position initiale">
+                        ↺ Reset
+                    </button>
+                    <button id="btnClear" class="btn btn-secondary" title="Vider l'échiquier">
+                        ✕ Vider
+                    </button>
+                    <button id="btnAnalyze" class="btn btn-primary" title="Lancer l'analyse">
+                        ▶ Analyser
+                    </button>
+                </div>
+
+                <!-- Status -->
+                <div class="status-bar">
+                    <span id="statusMode" class="status-mode">Mode: Jeu</span>
+                    <span id="statusTurn" class="status-turn">Trait aux Blancs</span>
+                    <span id="statusEngine" class="status-engine">Stockfish: Prêt</span>
+                </div>
+
+                <!-- Warning -->
+                <div id="warningBox" class="warning-box hidden">
+                    <span class="warning-icon">⚠</span>
+                    <span id="warningText"></span>
+                </div>
+            </section>
+
+            <!-- Analysis panel -->
+            <aside class="analysis-panel">
+                <h2 class="panel-title">Analyse</h2>
+
+                <div class="best-moves">
+                    <h3 class="section-title">Meilleurs coups</h3>
+                    <div id="bestMoves" class="moves-list">
+                        <div class="move-item placeholder">
+                            <span class="move-rank">1.</span>
+                            <span class="move-notation">—</span>
+                            <span class="move-eval">—</span>
+                        </div>
+                        <div class="move-item placeholder">
+                            <span class="move-rank">2.</span>
+                            <span class="move-notation">—</span>
+                            <span class="move-eval">—</span>
+                        </div>
+                        <div class="move-item placeholder">
+                            <span class="move-rank">3.</span>
+                            <span class="move-notation">—</span>
+                            <span class="move-eval">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="analysis-info">
+                    <h3 class="section-title">Informations</h3>
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="info-label">Profondeur</span>
+                            <span id="infoDepth" class="info-value">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Nœuds</span>
+                            <span id="infoNodes" class="info-value">—</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Temps</span>
+                            <span id="infoTime" class="info-value">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="fen-section">
+                    <h3 class="section-title">Position FEN</h3>
+                    <input type="text" id="fenInput" class="fen-input" placeholder="Coller un FEN ici..." />
+                    <button id="btnLoadFen" class="btn btn-small">Charger</button>
+                </div>
+            </aside>
+        </main>
+
+        <!-- Spare pieces (edit mode) -->
+        <div id="sparePieces" class="spare-pieces hidden">
+            <button id="btnCloseSparePieces" class="spare-pieces-close" title="Fermer">×</button>
+            <div class="spare-row spare-white">
+                <img src="assets/pieces/wK.svg" data-piece="wK" class="spare-piece" alt="Roi blanc">
+                <img src="assets/pieces/wQ.svg" data-piece="wQ" class="spare-piece" alt="Dame blanche">
+                <img src="assets/pieces/wR.svg" data-piece="wR" class="spare-piece" alt="Tour blanche">
+                <img src="assets/pieces/wB.svg" data-piece="wB" class="spare-piece" alt="Fou blanc">
+                <img src="assets/pieces/wN.svg" data-piece="wN" class="spare-piece" alt="Cavalier blanc">
+                <img src="assets/pieces/wP.svg" data-piece="wP" class="spare-piece" alt="Pion blanc">
+            </div>
+            <div class="spare-row spare-black">
+                <img src="assets/pieces/bK.svg" data-piece="bK" class="spare-piece" alt="Roi noir">
+                <img src="assets/pieces/bQ.svg" data-piece="bQ" class="spare-piece" alt="Dame noire">
+                <img src="assets/pieces/bR.svg" data-piece="bR" class="spare-piece" alt="Tour noire">
+                <img src="assets/pieces/bB.svg" data-piece="bB" class="spare-piece" alt="Fou noir">
+                <img src="assets/pieces/bN.svg" data-piece="bN" class="spare-piece" alt="Cavalier noir">
+                <img src="assets/pieces/bP.svg" data-piece="bP" class="spare-piece" alt="Pion noir">
+            </div>
+            <div class="spare-controls">
+                <label class="turn-selector">
+                    <span>Trait aux:</span>
+                    <select id="selectTurn">
+                        <option value="w">Blancs</option>
+                        <option value="b">Noirs</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Propulsé par Stockfish 17 • <a href="https://github.com/Jean-Jawed/chess-analyzer"
+                    target="_blank">GitHub</a> • <a href="https://javed.fr" target="_blank">Site de l'auteur</a></p>
+        </footer>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Chargement de Stockfish...</p>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
+    <script src="js/engine.js"></script>
+    <script src="js/board.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
