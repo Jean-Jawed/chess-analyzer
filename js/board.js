@@ -160,6 +160,7 @@ const Board = (function () {
      */
     function onSquareClick(square) {
         if (isEditMode) return;
+        console.log('Processing click on:', square, 'Current selection:', selectedSquare);
 
         // If a piece is already selected, try to move there
         if (selectedSquare) {

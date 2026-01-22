@@ -239,6 +239,7 @@ h3 {
 #board .square-55d63 {
     background-size: cover;
     background-position: center;
+    cursor: pointer;
 }
 
 #board .white-1e1d7 {
