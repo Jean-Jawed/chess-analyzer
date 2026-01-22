@@ -46,11 +46,24 @@ const Board = (function () {
         // Setup spare pieces drag and drop
         setupSparePieces();
 
-        // Bind clicks for Tap-to-Move
-        $('#board').on('click', '.square-55d63', function () {
-            const square = $(this).data('square');
-            onSquareClick(square);
-        });
+        // Bind clicks/taps for Tap-to-Move
+        // We use mousedown/touchstart because chessboard.js might prevent default on child elements,
+        // which can stop the 'click' event from firing, especially on pieces.
+        const boardEl = document.getElementById('board');
+        const handleInteraction = (e) => {
+            const square = getSquareFromEvent(e);
+            if (square) {
+                onSquareClick(square);
+            }
+        };
+
+        boardEl.addEventListener('mousedown', handleInteraction);
+        boardEl.addEventListener('touchstart', (e) => {
+            // Only handle if it's a single touch to avoid interfering with zoom/scroll
+            if (e.touches.length === 1) {
+                handleInteraction(e);
+            }
+        }, { passive: true });
 
         return board;
     }
@@ -59,6 +72,10 @@ const Board = (function () {
      * Handle drag start
      */
     function onDragStart(source, piece, position, orientation) {
+        // Clear any existing Tap-to-Move selection when starting a drag
+        selectedSquare = null;
+        removeHighlights();
+
         // In edit mode, allow any piece to be moved
         if (isEditMode) {
             return true;
@@ -297,8 +314,22 @@ const Board = (function () {
     function getSquareFromEvent(e) {
         const boardEl = document.getElementById('board');
         const rect = boardEl.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+
+        // Handle both mouse and touch events
+        let clientX, clientY;
+        if (e.touches && e.touches.length > 0) {
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+
+        const x = clientX - rect.left;
+        const y = clientY - rect.top;
         const squareSize = rect.width / 8;
 
         const file = Math.floor(x / squareSize);
