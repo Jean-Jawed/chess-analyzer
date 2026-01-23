@@ -61,9 +61,11 @@ const Board = (function () {
         boardEl.addEventListener('touchstart', (e) => {
             // Only handle if it's a single touch to avoid interfering with zoom/scroll
             if (e.touches.length === 1) {
+                // Prevent mouse events from firing after touch
+                e.preventDefault();
                 handleInteraction(e);
             }
-        }, { passive: true });
+        }, { passive: false });
 
         return board;
     }
@@ -72,26 +74,32 @@ const Board = (function () {
      * Handle drag start
      */
     function onDragStart(source, piece, position, orientation) {
-        // Clear any existing Tap-to-Move selection when starting a drag
-        selectedSquare = null;
-        removeHighlights();
-
         // In edit mode, allow any piece to be moved
         if (isEditMode) {
+            selectedSquare = null;
+            removeHighlights();
             return true;
         }
 
         // In play mode, only allow moves for the side to move
-        // Using old Chess.js API: game_over() instead of isGameOver()
         if (game.game_over()) return false;
 
-        // Only allow dragging pieces of the current turn
-        if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
-            (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
-            return false;
+        // If it's a piece of the current turn starting a drag
+        const isCurrentTurnPiece = (game.turn() === 'w' && piece.search(/^w/) !== -1) ||
+            (game.turn() === 'b' && piece.search(/^b/) !== -1);
+
+        if (isCurrentTurnPiece) {
+            // Only clear selection if we are starting a NEW drag with a valid piece
+            // This allows us to keep the selection if we just clicked an opponent's piece for a tap-to-move capture
+            selectedSquare = null;
+            removeHighlights();
+            return true;
         }
 
-        return true;
+        // For opponent's pieces, we return false to prevent dragging,
+        // but we DON'T clear selectedSquare here because onSquareClick will need it
+        // for tap-to-move capture.
+        return false;
     }
 
     /**
